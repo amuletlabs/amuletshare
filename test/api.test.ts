@@ -155,6 +155,58 @@ describe("file API", () => {
     }
   });
 
+  it("shows browser-friendly share pages while keeping original bytes available to agents", async () => {
+    const markdown = await upload("# Browser-ready Markdown\n\nHello, preview.\n", {
+      filename: "README.md",
+      mimeType: "application/octet-stream",
+    });
+    const markdownUrl = `${origin}/f/${markdown.value.data.id}.md`;
+
+    const agentResponse = await dispatch(markdownUrl);
+    expect(agentResponse.headers.get("content-type")).toBe("application/octet-stream");
+    expect(agentResponse.headers.get("content-disposition")).toMatch(/^attachment;/u);
+    expect(new TextDecoder().decode(await agentResponse.arrayBuffer())).toContain("# Browser-ready Markdown");
+
+    const browserResponse = await dispatch(markdownUrl, { headers: { accept: "text/html" } });
+    expect(browserResponse.headers.get("content-type")).toContain("text/html");
+    expect(browserResponse.headers.get("content-security-policy")).toContain("frame-src 'self'");
+    const browserHtml = await browserResponse.text();
+    expect(browserHtml).toContain("README.md — share.amulet.so");
+    expect(browserHtml).toContain(`src="/f/${markdown.value.data.id}.md?preview=1"`);
+    expect(browserHtml).toContain(`href="/f/${markdown.value.data.id}.md?raw=1"`);
+
+    const rendered = await dispatch(`${markdownUrl}?preview=1`);
+    expect(rendered.headers.get("content-type")).toContain("text/html");
+    expect(rendered.headers.get("content-disposition")).toMatch(/^inline;/u);
+    expect(rendered.headers.get("content-security-policy")).toContain("sandbox");
+    expect(await rendered.text()).toContain("<h1>Browser-ready Markdown</h1>");
+
+    const forcedRaw = await dispatch(`${markdownUrl}?raw=1`, { headers: { accept: "text/html" } });
+    expect(forcedRaw.headers.get("content-type")).toBe("application/octet-stream");
+    expect(forcedRaw.headers.get("content-disposition")).toMatch(/^inline;/u);
+    expect(new TextDecoder().decode(await forcedRaw.arrayBuffer())).toContain("# Browser-ready Markdown");
+
+    const forcedDownload = await dispatch(`${markdownUrl}?preview=1&download=1`, {
+      headers: { accept: "text/html" },
+    });
+    expect(forcedDownload.headers.get("content-type")).toBe("application/octet-stream");
+    expect(forcedDownload.headers.get("content-disposition")).toMatch(/^attachment;/u);
+
+    const pdf = await upload("%PDF-1.4\n", { filename: "paper.pdf", mimeType: "application/octet-stream" });
+    const pdfUrl = `${origin}/f/${pdf.value.data.id}.pdf`;
+    const pdfBrowser = await dispatch(pdfUrl, { headers: { accept: "text/html" } });
+    expect(await pdfBrowser.text()).toContain(`src="/f/${pdf.value.data.id}.pdf?preview=1"`);
+    const pdfPreview = await dispatch(`${pdfUrl}?preview=1`);
+    expect(pdfPreview.headers.get("content-type")).toBe("application/pdf");
+    expect(pdfPreview.headers.get("content-disposition")).toMatch(/^inline;/u);
+
+    const binary = await upload("opaque", { filename: "archive.bin", mimeType: "application/octet-stream" });
+    const binaryBrowser = await dispatch(`${origin}/f/${binary.value.data.id}.bin`, {
+      headers: { accept: "text/html" },
+    });
+    expect(await binaryBrowser.text()).toContain("Preview isn’t available for this file type.");
+  });
+
   it("separates view and edit passwords", async () => {
     const created = await upload("protected", { password: "first-view", editPassword: "manage-file" });
     const id = created.value.data.id;

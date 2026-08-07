@@ -15,6 +15,80 @@ const INLINE_IMAGE_MIME_TYPES = new Set([
   "image/webp",
 ]);
 
+const MARKDOWN_MIME_TYPES = new Set([
+  "text/markdown",
+  "text/x-markdown",
+]);
+
+const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdown", ".mkd"]);
+
+const PREVIEW_MIME_TYPES_BY_EXTENSION = new Map([
+  [".avif", "image/avif"],
+  [".gif", "image/gif"],
+  [".htm", "text/html"],
+  [".html", "text/html"],
+  [".jpeg", "image/jpeg"],
+  [".jpg", "image/jpeg"],
+  [".m4a", "audio/mp4"],
+  [".mov", "video/quicktime"],
+  [".mp3", "audio/mpeg"],
+  [".mp4", "video/mp4"],
+  [".oga", "audio/ogg"],
+  [".ogg", "audio/ogg"],
+  [".ogv", "video/ogg"],
+  [".pdf", "application/pdf"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".wav", "audio/wav"],
+  [".webm", "video/webm"],
+  [".webp", "image/webp"],
+]);
+
+const TEXT_EXTENSIONS = new Set([
+  ".c",
+  ".conf",
+  ".cpp",
+  ".css",
+  ".csv",
+  ".go",
+  ".h",
+  ".ini",
+  ".java",
+  ".js",
+  ".json",
+  ".jsx",
+  ".log",
+  ".mjs",
+  ".py",
+  ".rb",
+  ".rs",
+  ".sh",
+  ".sql",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".tsv",
+  ".txt",
+  ".xml",
+  ".yaml",
+  ".yml",
+]);
+
+const TEXT_APPLICATION_MIME_TYPES = new Set([
+  "application/javascript",
+  "application/json",
+  "application/ld+json",
+  "application/sql",
+  "application/toml",
+  "application/xml",
+  "application/x-httpd-php",
+  "application/x-javascript",
+  "application/x-sh",
+  "application/x-yaml",
+]);
+
+export type FilePreviewKind = "audio" | "image" | "markdown" | "pdf" | "text" | "video" | "web";
+
 export function cleanFilename(value: string): string {
   const cleaned = value
     .replace(/[\\/]/gu, "_")
@@ -53,6 +127,36 @@ export function fileExtension(filename: string): string {
   return match ? `.${match[1].toLowerCase()}` : "";
 }
 
+export function baseMimeType(mimeType: string): string {
+  return mimeType.split(";", 1)[0].trim().toLowerCase();
+}
+
+export function isMarkdownFile(record: Pick<FileRecord, "file_name" | "mime_type">): boolean {
+  return MARKDOWN_MIME_TYPES.has(baseMimeType(record.mime_type))
+    || MARKDOWN_EXTENSIONS.has(fileExtension(record.file_name));
+}
+
+export function filePreviewKind(record: Pick<FileRecord, "file_name" | "mime_type">): FilePreviewKind | null {
+  const mimeType = previewMimeType(record);
+  const extension = fileExtension(record.file_name);
+  if (isMarkdownFile(record)) return "markdown";
+  if (mimeType.startsWith("image/")) return mimeType === "image/svg+xml" ? "web" : "image";
+  if (mimeType === "application/pdf" || extension === ".pdf") return "pdf";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType === "text/html" || mimeType === "application/xhtml+xml") return "web";
+  if (mimeType.startsWith("text/") || TEXT_APPLICATION_MIME_TYPES.has(mimeType) || TEXT_EXTENSIONS.has(extension)) {
+    return "text";
+  }
+  return null;
+}
+
+export function previewMimeType(record: Pick<FileRecord, "file_name" | "mime_type">): string {
+  const mimeType = baseMimeType(record.mime_type);
+  if (mimeType !== "application/octet-stream") return mimeType;
+  return PREVIEW_MIME_TYPES_BY_EXTENSION.get(fileExtension(record.file_name)) || mimeType;
+}
+
 export function fileUrl(request: Request, env: Env, id: string, filename: string): string {
   const requestUrl = new URL(request.url);
   const localHost = env.ENVIRONMENT === "local" ? request.headers.get("host") : null;
@@ -80,8 +184,7 @@ export async function createAvailableFileId(env: Env): Promise<string> {
 }
 
 export function isSafeInlineImage(mimeType: string): boolean {
-  const baseType = mimeType.split(";", 1)[0].trim().toLowerCase();
-  return INLINE_IMAGE_MIME_TYPES.has(baseType);
+  return INLINE_IMAGE_MIME_TYPES.has(baseMimeType(mimeType));
 }
 
 export function contentDisposition(filename: string, disposition: "attachment" | "inline" = "attachment"): string {

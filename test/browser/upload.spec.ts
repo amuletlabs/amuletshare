@@ -9,7 +9,7 @@ const pixelPng = Buffer.from(
   "base64",
 );
 
-test("renders safe images inline and keeps unsafe content download-only", async ({ page, request }) => {
+test("previews browser-friendly files and sandboxes active content", async ({ page, request }) => {
   const createdIds: Array<{ id: string; editPassword: string }> = [];
   try {
     const imageUpload = await request.post("/api/files", {
@@ -39,7 +39,11 @@ test("renders safe images inline and keeps unsafe content download-only", async 
 
     const htmlUpload = await request.post("/api/files", {
       multipart: {
-        file: { name: "unsafe.html", mimeType: "text/html", buffer: Buffer.from("<h1>unsafe</h1>") },
+        file: {
+          name: "unsafe.html",
+          mimeType: "text/html",
+          buffer: Buffer.from("<h1>Sandboxed HTML</h1><script>document.body.dataset.ran = 'yes'</script>"),
+        },
       },
     });
     expect(htmlUpload.status()).toBe(201);
@@ -48,6 +52,31 @@ test("renders safe images inline and keeps unsafe content download-only", async 
     const htmlResponse = await request.get(html.url);
     expect(htmlResponse.headers()["content-disposition"]).toMatch(/^attachment;/u);
     expect(htmlResponse.headers()["x-content-type-options"]).toBe("nosniff");
+
+    await page.goto(html.url);
+    const htmlPreview = page.frameLocator('iframe[title="Preview of unsafe.html"]');
+    await expect(htmlPreview.getByRole("heading", { name: "Sandboxed HTML" })).toBeVisible();
+    await expect(htmlPreview.locator("body")).not.toHaveAttribute("data-ran", "yes");
+
+    const markdownUpload = await request.post("/api/files", {
+      multipart: {
+        file: {
+          name: "notes.md",
+          mimeType: "application/octet-stream",
+          buffer: Buffer.from("# Rendered Markdown\n\nA browser-friendly note.\n"),
+        },
+      },
+    });
+    expect(markdownUpload.status()).toBe(201);
+    const markdown = await markdownUpload.json();
+    createdIds.push({ id: markdown.data.id, editPassword: markdown.edit_password });
+
+    await page.goto(markdown.url);
+    await expect(page).toHaveTitle("notes.md — share.amulet.so");
+    await expect(page.getByRole("link", { name: "Raw" })).toHaveAttribute("href", /raw=1/u);
+    await expect(page.getByRole("link", { name: "Download" })).toHaveAttribute("href", /download=1/u);
+    const markdownPreview = page.frameLocator('iframe[title="Preview of notes.md"]');
+    await expect(markdownPreview.getByRole("heading", { name: "Rendered Markdown" })).toBeVisible();
   } finally {
     for (const file of createdIds) {
       await request.delete(`/api/files/${file.id}`, { data: { edit_password: file.editPassword } });

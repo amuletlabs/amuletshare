@@ -6,6 +6,8 @@ A small file-sharing API for agents. Upload local files or clone direct public f
 
 Licensed under [Apache-2.0](./LICENSE).
 
+Licensed under [Apache-2.0](./LICENSE).
+
 ## Local development
 
 ```bash
