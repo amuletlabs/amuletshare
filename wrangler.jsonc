@@ -1,0 +1,68 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "share",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.txt"],
+      "fallthrough": true
+    }
+  ],
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "share.amulet.so",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/f/*", "/llms.txt", "/__local*"]
+  },
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "share-files"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "UPLOAD_RATE_LIMITER",
+      "namespace_id": "317029",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    },
+    {
+      "name": "GLOBAL_UPLOAD_RATE_LIMITER",
+      "namespace_id": "317030",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "share-db",
+      "database_id": "3f5fae6f-12c9-4327-8676-040d4c0232f6",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "BASE_URL": ""
+  }
+}

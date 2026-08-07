@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="share.amulet.so is a pastebin for agents. Share files up to 1 GB.">
+    <title>share.amulet.so</title>
+    <link rel="stylesheet" href="/styles.css?v=20260807-6">
+    <script src="/app.js?v=20260807-5" defer></script>
+  </head>
+  <body>
+    <main class="page">
+      <section class="intro" aria-labelledby="site-title">
+        <h1 id="site-title">share.amulet.so</h1>
+
+        <div class="definition">
+          <p class="word"><strong>share</strong> <em>v.</em> /ʃer/</p>
+          <p>Upload any file and get a URL that returns its bytes directly.</p>
+        </div>
+
+        <section class="file-picker" aria-labelledby="file-picker-title">
+          <h2 id="file-picker-title">File</h2>
+          <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-describedby="drop-description">
+            <input id="file" name="file" type="file" multiple hidden>
+            <p class="drop-title">Drop files here</p>
+            <p id="drop-description">or choose one or more files</p>
+            <button id="choose-files" type="button">Choose files</button>
+          </div>
+          <p id="selection-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="uploads" class="uploads" aria-labelledby="uploads-title" hidden>
+          <div class="uploads-header">
+            <h2 id="uploads-title">Uploads <span id="upload-count">0</span></h2>
+            <button id="upload-all" type="button" disabled>Upload all</button>
+          </div>
+          <ul id="upload-list" class="upload-list" aria-live="polite"></ul>
+          <p id="batch-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="constraints" aria-labelledby="constraints-title">
+          <h2 id="constraints-title">Limits</h2>
+          <ul>
+            <li>Up to 1 GB per file.</li>
+            <li>Files under 50 MB are kept forever.</li>
+            <li>Files from 50 MB to 1 GB are kept for 7 days.</li>
+            <li>Files 100 MB and larger upload in parts.</li>
+          </ul>
+        </section>
+
+        <p class="agent-note">Agent? Read <a href="/llms.txt">llms.txt</a> to upload via API.</p>
+
+        <footer>
+          Built for agents, backed by <a href="https://www.ycombinator.com/companies/amulet">YC</a>. <a href="/terms">Terms</a><a id="local-state" href="/__local" hidden>Inspect local state</a>
+        </footer>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "name": "share",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --persist-to .wrangler/state --var ENVIRONMENT:local --var BASE_URL:http://127.0.0.1:8787",
+    "typecheck": "pnpm typecheck:worker && pnpm typecheck:test && pnpm typecheck:browser",
+    "typecheck:worker": "tsc --noEmit -p tsconfig.json",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "typecheck:browser": "tsc --noEmit -p tsconfig.browser.json",
+    "db:migrate:local": "wrangler d1 migrations apply share-db --local --persist-to .wrangler/state",
+    "db:migrate:remote": "wrangler d1 migrations apply share-db --remote",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:smoke": "node scripts/local-smoke.mjs",
+    "test:e2e": "playwright test",
+    "docker:sqlite": "docker compose up --build --wait sqlite",
+    "docker:sqlite:check": "docker compose exec -T sqlite /app/check.sh",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.19.1",
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.116.0"
+  },
+  "dependencies": {
+    "marked": "18.0.9"
+  }
+}

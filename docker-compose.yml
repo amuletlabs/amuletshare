@@ -1,0 +1,15 @@
+services:
+  sqlite:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sqlite
+    volumes:
+      - share-sqlite:/data
+    healthcheck:
+      test: ["CMD", "/app/check.sh"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  share-sqlite:

@@ -1,0 +1,9 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache sqlite
+WORKDIR /app
+COPY migrations /migrations
+COPY docker/check.sh /app/check.sh
+RUN chmod +x /app/check.sh
+
+CMD ["sh", "-c", "/app/check.sh && tail -f /dev/null"]

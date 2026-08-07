@@ -1,0 +1,260 @@
+# share.amulet.so
+
+Programmatic file sharing for agents.
+
+## Overview
+
+share.amulet.so is a REST API for uploading and sharing files up to 1 GB. It supports direct file uploads, multipart uploads, optional view passwords, and edit-password-protected management.
+
+Base URL: https://share.amulet.so
+
+All API errors are JSON:
+
+```json
+{"error":"Human-readable message"}
+```
+
+## Upload methods
+
+- Direct upload: files smaller than 100,000,000 bytes.
+- Multipart upload: files from 100,000,000 through 1,000,000,000 bytes.
+
+Server-side URL imports are disabled. `POST /api/files` accepts only `multipart/form-data`.
+
+Files smaller than 50,000,000 bytes remain until deleted. Files from 50,000,000 through 1,000,000,000 bytes expire after seven days. Clients cannot override retention.
+
+## Passwords
+
+`password` is an optional view password. When set, downloads and metadata requests require `?password=...`.
+
+`edit_password` authorizes changing the view password or deleting the file. It does not protect downloads. If omitted during creation, the service generates one and returns it once. Save it.
+
+## 1. Direct upload
+
+Use one multipart/form-data request for files smaller than 100,000,000 bytes.
+
+```http
+POST /api/files
+Content-Type: multipart/form-data
+```
+
+Form fields:
+
+- `file` (required): file bytes.
+- `filename` (optional): overrides the uploaded filename.
+- `mime_type` (optional): overrides the detected MIME type.
+- `password` (optional): view/download password.
+- `edit_password` (optional): management password; generated when omitted.
+
+Minimal curl example:
+
+```bash
+curl -sS https://share.amulet.so/api/files \
+  -F 'file=@./example.txt'
+```
+
+Password-protected example:
+
+```bash
+curl -sS https://share.amulet.so/api/files \
+  -F 'file=@./example.txt' \
+  -F 'filename=agent-output.txt' \
+  -F 'password=view-secret' \
+  -F 'edit_password=management-secret'
+```
+
+Success: `201 Created`
+
+```json
+{
+  "data": {
+    "id": "0123456789abcdef",
+    "file_name": "agent-output.txt",
+    "mime_type": "text/plain",
+    "size_bytes": 1234,
+    "expires_at": null,
+    "created_at": "2026-08-07T00:00:00.000Z",
+    "downloads": 0
+  },
+  "edit_password": "management-secret-or-generated-value",
+  "url": "https://share.amulet.so/f/0123456789abcdef.txt"
+}
+```
+
+## 2. Multipart upload
+
+Use multipart upload for files from 100,000,000 through 1,000,000,000 bytes.
+
+### Step 1: create an upload
+
+```bash
+curl -sS https://share.amulet.so/api/files/upload-url \
+  -H 'content-type: application/json' \
+  --data '{
+    "filename": "archive.zip",
+    "size": 250000000,
+    "mime_type": "application/zip"
+  }'
+```
+
+Success: `201 Created`
+
+```json
+{
+  "file_id": "0123456789abcdef",
+  "upload_id": "multipart-upload-id",
+  "upload_type": "multipart",
+  "edit_password": "generated-edit-password",
+  "url": "https://share.amulet.so/f/0123456789abcdef.zip"
+}
+```
+
+Save `file_id`, `upload_id`, and `edit_password`.
+
+### Step 2: upload parts
+
+Use consistent 8 MiB parts. Each non-final part must be the same size and at least 5 MiB. Only the final part may be smaller. Part numbers start at 1.
+
+```bash
+curl -sS -X POST \
+  'https://share.amulet.so/api/files/0123456789abcdef/upload-part?uploadId=multipart-upload-id&partNumber=1' \
+  -H 'content-type: application/octet-stream' \
+  --data-binary '@part-001.bin'
+```
+
+Each part returns:
+
+```json
+{"partNumber":1,"etag":"part-etag"}
+```
+
+### Step 3: complete the upload
+
+Send every returned part number and ETag in ascending order.
+
+```bash
+curl -sS -X POST \
+  'https://share.amulet.so/api/files/0123456789abcdef/complete?uploadId=multipart-upload-id' \
+  -H 'content-type: application/json' \
+  --data '{
+    "parts": [
+      {"partNumber": 1, "etag": "etag-1"},
+      {"partNumber": 2, "etag": "etag-2"}
+    ]
+  }'
+```
+
+Success: `200 OK` with `data`, `url`, and the completed object `etag`. The edit password is not returned again; use the value from Step 1.
+
+### Abort an incomplete upload
+
+```bash
+curl -sS -X DELETE \
+  'https://share.amulet.so/api/files/0123456789abcdef/abort?uploadId=multipart-upload-id'
+```
+
+Multipart sessions expire after 24 hours.
+
+## 3. Download a file
+
+Both routes return the raw file bytes:
+
+```bash
+curl -fL 'https://share.amulet.so/f/0123456789abcdef.txt' -o example.txt
+curl -fL 'https://share.amulet.so/api/files/0123456789abcdef' -o example.txt
+```
+
+JPEG, PNG, GIF, WebP, and AVIF responses use `Content-Disposition: inline` by default so browsers can display them. The URL and bytes do not change, so `curl -o` still saves the original file.
+
+HTML, SVG, and all other MIME types use `Content-Disposition: attachment`. Every file response includes `X-Content-Type-Options: nosniff`.
+
+Force any file to download as an attachment with `?download=1`:
+
+```bash
+curl -fL 'https://share.amulet.so/f/0123456789abcdef.png?download=1' -o image.png
+```
+
+For a protected file:
+
+```bash
+curl -fL 'https://share.amulet.so/f/0123456789abcdef.txt?password=view-secret' -o example.txt
+```
+
+Combine options as `?password=view-secret&download=1`.
+
+A successful download increments the file's `downloads` count.
+
+## 4. Read metadata
+
+```bash
+curl -sS 'https://share.amulet.so/api/files/0123456789abcdef/info'
+curl -sS 'https://share.amulet.so/api/files/0123456789abcdef/info?password=view-secret'
+```
+
+```json
+{
+  "id": "0123456789abcdef",
+  "file_name": "example.txt",
+  "mime_type": "text/plain",
+  "size_bytes": 1234,
+  "expires_at": null,
+  "created_at": "2026-08-07T00:00:00.000Z",
+  "downloads": 0,
+  "last_downloaded_at": null
+}
+```
+
+## 5. Change the view password
+
+The edit password cannot be changed. The MVP does not support clearing a view password once one has been set.
+
+```bash
+curl -sS -X PATCH \
+  https://share.amulet.so/api/files/0123456789abcdef \
+  -H 'content-type: application/json' \
+  --data '{
+    "edit_password": "management-secret",
+    "password": "new-view-secret"
+  }'
+```
+
+## 6. Delete a file
+
+```bash
+curl -sS -X DELETE \
+  https://share.amulet.so/api/files/0123456789abcdef \
+  -H 'content-type: application/json' \
+  --data '{"edit_password":"management-secret"}'
+```
+
+```json
+{"message":"File deleted successfully"}
+```
+
+## Limits
+
+| Size | Upload method | Max retention |
+| --- | --- | --- |
+| Less than 50,000,000 bytes | Direct | Forever |
+| 50,000,000 to 99,999,999 bytes | Direct | 7 days |
+| 100,000,000 to 1,000,000,000 bytes | Multipart | 7 days |
+| More than 1,000,000,000 bytes | Rejected | Not stored |
+
+File-creation requests are limited to 10 per source address per minute and 100 total per Cloudflare location per minute. Multipart part uploads do not consume additional creation tokens.
+
+## Common errors
+
+Every non-2xx API response is JSON with a short, specific explanation in `error`, for example `{"error":"POST required for this endpoint"}`.
+
+- `400`: invalid request or multipart data.
+- `401`: view password required.
+- `403`: incorrect view or edit password.
+- `404`: file or upload not found.
+- `405`: method not allowed.
+- `410`: file or multipart upload expired.
+- `413`: file too large or direct upload requires multipart.
+- `415`: unsupported request content type.
+- `429`: rate limit exceeded.
+- `500`: internal or object-storage failure.
+
+Last updated: 2026-08-07

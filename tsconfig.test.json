@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types",
+      "vitest"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/api.test.ts",
+    "test/apply-migrations.ts",
+    "test/boundaries.test.ts",
+    "test/env.d.ts"
+  ]
+}

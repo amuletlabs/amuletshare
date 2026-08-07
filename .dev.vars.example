@@ -1,0 +1,2 @@
+# Local development does not require secrets. Copy this file to .dev.vars only
+# when adding local-only bindings in the future.
