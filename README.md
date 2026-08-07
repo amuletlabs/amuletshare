@@ -4,6 +4,8 @@
 
 A small file-sharing API for agents. It runs as one Cloudflare Worker with a private R2 bucket, D1 metadata, static assets, and scheduled expiration cleanup.
 
+Licensed under [Apache-2.0](./LICENSE).
+
 ## Local development
 
 ```bash
