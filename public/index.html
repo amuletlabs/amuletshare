@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="share.amulet.so is a pastebin for agents. Share files up to 1 GB.">
     <title>share.amulet.so</title>
-    <link rel="stylesheet" href="/styles.css?v=20260807-7">
-    <script src="/app.js?v=20260807-6" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=20260807-8">
+    <script src="/app.js?v=20260807-7" defer></script>
   </head>
   <body>
     <main class="page">
@@ -50,12 +50,15 @@
         </section>
 
         <section id="uploads" class="uploads" aria-labelledby="uploads-title" hidden>
-          <div class="uploads-header">
-            <h2 id="uploads-title">Uploads <span id="upload-count">0</span></h2>
-            <button id="upload-all" type="button" disabled>Upload all</button>
+          <h2 id="uploads-title">Upload</h2>
+          <div class="uploads-box">
+            <ul id="upload-list" class="upload-list" aria-live="polite"></ul>
+            <div class="uploads-controls">
+              <p><span id="upload-count">0</span> <span id="upload-count-label">files</span></p>
+              <button id="upload-all" type="button" disabled>Upload files</button>
+            </div>
+            <p id="batch-status" class="status" role="status" aria-live="polite"></p>
           </div>
-          <ul id="upload-list" class="upload-list" aria-live="polite"></ul>
-          <p id="batch-status" class="status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="constraints" aria-labelledby="constraints-title">
@@ -75,5 +78,6 @@
         </footer>
       </section>
     </main>
+    <section id="toast-region" class="toast-region" aria-label="Notifications" aria-live="polite" aria-relevant="additions"></section>
   </body>
 </html>

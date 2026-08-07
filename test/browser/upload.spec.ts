@@ -84,7 +84,7 @@ test("previews browser-friendly files and sandboxes active content", async ({ pa
   }
 });
 
-test("queues, individually uploads, and batch uploads through the landing page", async ({ page, request }) => {
+test("queues and batch uploads through one landing-page action", async ({ page, request }) => {
   await page.goto("/");
   await expect(page).toHaveTitle("share.amulet.so");
   await expect(page.getByRole("heading", { name: "share.amulet.so" })).toBeVisible();
@@ -135,14 +135,19 @@ test("queues, individually uploads, and batch uploads through the landing page",
   await expect(rows).toHaveCount(4);
   await expect(page.locator("#uploads")).toBeVisible();
   await expect(page.locator("#upload-count")).toHaveText("4");
-  await expect(page.getByRole("button", { name: "Upload all" })).toBeEnabled();
+  await expect(page.locator("#uploads .uploads-box")).toHaveCSS("border-top-style", "dashed");
+  await expect(page.locator("#uploads .upload-one")).toHaveCount(0);
+  const uploadButton = page.getByRole("button", { name: "Upload 4 files" });
+  await expect(uploadButton).toBeEnabled();
 
-  await rows.first().getByRole("button", { name: "Upload", exact: true }).click();
-  await expect(rows.first().locator(".item-result")).toBeVisible();
-
-  await page.getByRole("button", { name: "Upload all" }).click();
-  await expect(page.locator("#batch-status")).toHaveText("3 files uploaded.");
+  await uploadButton.click();
+  await expect(page.locator("#batch-status")).toHaveText("4 files uploaded.");
   await expect(page.locator("#upload-list .item-result")).toHaveCount(4);
+  const toast = page.locator(".toast").last();
+  await expect(toast).toContainText("Upload complete");
+  await expect(toast).toContainText("4 files uploaded.");
+  await expect(page.locator(".toast-region")).toHaveCSS("position", "fixed");
+  await expect(page.getByRole("button", { name: "All uploaded" })).toBeDisabled();
 
   const uploadedFiles = await page.locator("#upload-list .item-result").evaluateAll((results) =>
     results.map((result) => ({
@@ -215,12 +220,12 @@ test("queues direct URLs and renders clone success and rejection", async ({ page
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText("https://cdn.example.com/pixel.png");
   await expect(rows.first()).toContainText("size and type checked during upload");
+  await expect(page.locator("#uploads .upload-one")).toHaveCount(0);
 
-  await rows.first().getByRole("button", { name: "Upload", exact: true }).click();
+  await page.getByRole("button", { name: "Upload 2 files" }).click();
   await expect(rows.first().locator(".item-result")).toContainText("0123456789abcdef.png");
   await expect(rows.first().locator(".item-result")).toContainText("mock-edit-password");
-
-  await rows.nth(1).getByRole("button", { name: "Upload", exact: true }).click();
   await expect(rows.nth(1)).toContainText("URL points to a web page, not a file");
   await expect(rows.nth(1)).toHaveClass(/is-error/u);
+  await expect(page.locator(".toast").last()).toContainText("1 uploaded, 1 failed.");
 });

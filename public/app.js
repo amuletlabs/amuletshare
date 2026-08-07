@@ -11,9 +11,11 @@ const uploadCount = document.querySelector("#upload-count");
 const uploadAllButton = document.querySelector("#upload-all");
 const batchStatus = document.querySelector("#batch-status");
 const uploadsSection = document.querySelector("#uploads");
+const uploadCountLabel = document.querySelector("#upload-count-label");
 const urlForm = document.querySelector("#url-form");
 const urlInput = document.querySelector("#source-url");
 const urlStatus = document.querySelector("#url-status");
+const toastRegion = document.querySelector("#toast-region");
 
 const queue = new Map();
 let batchBusy = false;
@@ -75,6 +77,40 @@ function resultDefinition(term, value) {
   return fragment;
 }
 
+function dismissToast(toast) {
+  if (toast.classList.contains("is-closing")) return;
+  toast.classList.add("is-closing");
+  const remove = () => toast.remove();
+  toast.addEventListener("animationend", remove, { once: true });
+  setTimeout(remove, 200);
+}
+
+function showToast(title, message, type = "success") {
+  const toast = document.createElement("article");
+  toast.className = `toast${type === "error" ? " is-error" : ""}`;
+
+  const content = document.createElement("div");
+  content.className = "toast-content";
+  const heading = document.createElement("strong");
+  heading.className = "toast-title";
+  heading.textContent = title;
+  const detail = document.createElement("p");
+  detail.className = "toast-message";
+  detail.textContent = message;
+  content.append(heading, detail);
+
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "toast-dismiss";
+  dismiss.textContent = "×";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.addEventListener("click", () => dismissToast(toast));
+
+  toast.append(content, dismiss);
+  toastRegion.append(toast);
+  setTimeout(() => dismissToast(toast), 5_000);
+}
+
 function renderItem(item) {
   const row = document.createElement("li");
   row.className = `upload-item${item.state === "error" || item.state === "invalid" ? " is-error" : ""}${item.state === "complete" ? " is-complete" : ""}`;
@@ -92,16 +128,6 @@ function renderItem(item) {
 
   const actions = document.createElement("div");
   actions.className = "item-actions";
-
-  if (item.state !== "complete") {
-    const upload = document.createElement("button");
-    upload.type = "button";
-    upload.className = "upload-one";
-    upload.textContent = item.state === "error" ? "Retry" : item.state === "uploading" ? "Uploading…" : "Upload";
-    upload.disabled = item.state === "uploading" || item.state === "invalid" || batchBusy;
-    upload.addEventListener("click", () => { void uploadOne(item); });
-    actions.append(upload);
-  }
 
   const remove = document.createElement("button");
   remove.type = "button";
@@ -162,10 +188,19 @@ function uploadableItems() {
 }
 
 function renderQueue() {
+  const uploadableCount = uploadableItems().length;
   uploadsSection.hidden = queue.size === 0;
   uploadCount.textContent = String(queue.size);
+  uploadCountLabel.textContent = queue.size === 1 ? "file" : "files";
   uploadList.replaceChildren(...[...queue.values()].map(renderItem));
-  uploadAllButton.disabled = batchBusy || uploadableItems().length === 0;
+  uploadAllButton.disabled = batchBusy || uploadableCount === 0;
+  uploadAllButton.textContent = batchBusy
+    ? "Uploading…"
+    : uploadableCount === 0
+      ? "All uploaded"
+      : uploadableCount === 1
+        ? "Upload file"
+        : `Upload ${uploadableCount} files`;
 }
 
 function addFiles(files) {
@@ -347,7 +382,16 @@ async function uploadAll() {
   batchStatus.textContent = failed === 0
     ? `${completed} ${completed === 1 ? "file" : "files"} uploaded.`
     : `${completed} uploaded, ${failed} failed.`;
-  if (failed > 0) batchStatus.classList.add("error");
+  if (failed > 0) {
+    batchStatus.classList.add("error");
+    showToast(
+      completed === 0 ? "Upload failed" : "Uploads finished with errors",
+      batchStatus.textContent,
+      "error",
+    );
+  } else {
+    showToast("Upload complete", batchStatus.textContent);
+  }
   renderQueue();
 }
 
