@@ -10,9 +10,9 @@ Limits are evaluated using the stored file's exact byte size.
 
 | Size | Upload mode | Retention |
 | --- | --- | --- |
-| `< 50,000,000` bytes | Direct | Forever |
-| `50,000,000–99,999,999` bytes | Direct | 7 days |
-| `100,000,000–1,000,000,000` bytes | Multipart | 7 days |
+| `< 50,000,000` bytes | Direct or URL import | Forever |
+| `50,000,000–99,999,999` bytes | Direct or URL import | 7 days |
+| `100,000,000–1,000,000,000` bytes | Multipart or URL import | 7 days |
 | `> 1,000,000,000` bytes | Rejected | Not stored |
 
 Clients cannot override retention. `expires_at` is `null` for permanent files and an ISO 8601 timestamp for files retained for seven days.
@@ -80,6 +80,31 @@ Content-Type: multipart/form-data
 | `edit_password` | No | Management password. The server generates one when omitted. |
 
 Returns `201` with the standard file response.
+
+## Import a file from a URL
+
+The server can download a public file or image and store an independent copy. Redirects are followed only while every destination remains a public HTTP(S) URL. HTML web pages are rejected; a source must return a successful, non-HTML response body. The streamed bytes are stopped at the same 1,000,000,000-byte limit as browser uploads.
+
+```http
+POST /api/files
+Content-Type: application/json
+```
+
+| JSON field | Required | Behavior |
+| --- | --- | --- |
+| `url` | Yes | Public HTTP(S) URL to clone. |
+| `filename` | No | Defaults to the source `Content-Disposition` filename, then its URL path. |
+| `mime_type` | No | Defaults to the source response type or `application/octet-stream`. |
+| `password` | No | View/download password. Omission makes the file public. |
+| `edit_password` | No | Management password. The server generates one when omitted. |
+
+```bash
+curl -sS https://share.amulet.so/api/files \
+  -H 'content-type: application/json' \
+  --data '{"url":"https://example.com/files/photo.png"}'
+```
+
+Returns `201` with the standard file response. Source failures, non-success statuses, unsafe destinations, and non-file web pages return JSON errors without creating a stored file.
 
 ## Multipart upload
 
@@ -257,7 +282,7 @@ The `error` value is a short explanation of the specific failure, so clients do 
 | `404` | File or upload not found. |
 | `410` | File expired. |
 | `413` | File too large or direct upload requires multipart. |
-| `415` | Unsupported request content type. `POST /api/files` accepts only `multipart/form-data`; URL imports are disabled. |
+| `415` | Unsupported request content type, or a URL resolves to an HTML web page instead of a file. |
 | `405` | The route exists but does not support the request method. |
 | `429` | Rate limit exceeded. |
 | `500` | Internal or object-storage failure. |

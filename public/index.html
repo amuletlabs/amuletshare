@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="share.amulet.so is a pastebin for agents. Share files up to 1 GB.">
     <title>share.amulet.so</title>
-    <link rel="stylesheet" href="/styles.css?v=20260807-6">
-    <script src="/app.js?v=20260807-5" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=20260807-7">
+    <script src="/app.js?v=20260807-6" defer></script>
   </head>
   <body>
     <main class="page">
@@ -24,9 +24,29 @@
             <input id="file" name="file" type="file" multiple hidden>
             <p class="drop-title">Drop files here</p>
             <p id="drop-description">or choose one or more files</p>
-            <button id="choose-files" type="button">Choose files</button>
+            <button id="choose-files" class="picker-button" type="button">Choose files</button>
           </div>
           <p id="selection-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="url-picker" aria-labelledby="url-picker-title">
+          <div class="section-heading">
+            <h2 id="url-picker-title">File URL</h2>
+            <details class="help-popover">
+              <summary aria-label="About file URL uploads">?</summary>
+              <p>Paste a direct file or image URL. Web pages are rejected; redirects to downloadable files are supported.</p>
+            </details>
+          </div>
+          <div class="url-box">
+            <form id="url-form">
+              <label class="visually-hidden" for="source-url">File URL</label>
+              <div class="url-row">
+                <input id="source-url" name="url" type="url" inputmode="url" placeholder="https://example.com/image.png" required>
+                <button class="picker-button" type="submit">Add URL</button>
+              </div>
+            </form>
+          </div>
+          <p id="url-status" class="status" role="status" aria-live="polite"></p>
         </section>
 
         <section id="uploads" class="uploads" aria-labelledby="uploads-title" hidden>

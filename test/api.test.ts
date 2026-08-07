@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { errorResponse } from "../src/http/errors";
+import { createFile } from "../src/routes/files";
 import { cleanupExpired } from "../src/scheduled";
+import type { RemoteFetcher } from "../src/services/url-imports";
 import worker from "../src/index";
 
 const origin = "https://share.test";
@@ -33,6 +35,22 @@ async function upload(
     body: form,
   });
   return { response, value: await body(response) };
+}
+
+async function importUrl(
+  value: Record<string, unknown>,
+  fetcher: RemoteFetcher,
+): Promise<Response> {
+  const request = new Request(`${origin}/api/files`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(value),
+  });
+  try {
+    return await createFile(request, env, fetcher);
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 describe("file API", () => {
@@ -176,15 +194,15 @@ describe("file API", () => {
       body: "bad",
     });
     expect(unsupported.status).toBe(415);
-    expect(await body(unsupported)).toEqual({ error: "Use multipart/form-data" });
+    expect(await body(unsupported)).toEqual({ error: "Use multipart/form-data or application/json" });
 
-    const disabledUrlImport = await dispatch(`${origin}/api/files`, {
+    const invalidJsonUpload = await dispatch(`${origin}/api/files`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: "https://example.com/file.txt" }),
+      headers: { "content-type": "text/plain" },
+      body: "bad",
     });
-    expect(disabledUrlImport.status).toBe(415);
-    expect(await body(disabledUrlImport)).toEqual({ error: "Use multipart/form-data" });
+    expect(invalidJsonUpload.status).toBe(415);
+    expect(await body(invalidJsonUpload)).toEqual({ error: "Use multipart/form-data or application/json" });
 
     const tooSmall = await dispatch(`${origin}/api/files/upload-url`, {
       method: "POST",
@@ -200,6 +218,115 @@ describe("file API", () => {
     });
     expect(tooLarge.status).toBe(413);
 
+  });
+
+  it("clones a redirected remote file and stores its exact bytes", async () => {
+    const calls: Array<{ init: RequestInit; url: string }> = [];
+    const fetcher: RemoteFetcher = async (url, init) => {
+      calls.push({ url, init });
+      if (url === "https://files.example/start") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "/downloads/report" },
+        });
+      }
+      return new Response("remote file bytes", {
+        status: 200,
+        headers: {
+          "content-disposition": "attachment; filename*=UTF-8''report%20final.txt",
+          "content-type": "text/plain; charset=utf-8",
+        },
+      });
+    };
+
+    const response = await importUrl({
+      url: "https://files.example/start",
+      edit_password: "manage-remote",
+    }, fetcher);
+    expect(response.status).toBe(201);
+    const created = await body(response);
+    expect(created.data.file_name).toBe("report final.txt");
+    expect(created.data.mime_type).toBe("text/plain");
+    expect(created.data.size_bytes).toBe(17);
+    expect(created.data.expires_at).toBeNull();
+    expect(created.edit_password).toBe("manage-remote");
+    expect(created.url).toMatch(/\/f\/[a-f0-9]{16}\.txt$/u);
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://files.example/start",
+      "https://files.example/downloads/report",
+    ]);
+    expect(calls.every((call) => call.init.redirect === "manual")).toBe(true);
+
+    const downloaded = await dispatch(`${origin}/api/files/${created.data.id}`);
+    expect(downloaded.status).toBe(200);
+    expect(downloaded.headers.get("content-type")).toBe("text/plain");
+    expect(await downloaded.text()).toBe("remote file bytes");
+  });
+
+  it("streams URL imports across multiple R2 parts", async () => {
+    const size = (8 * 1024 * 1024) + 3;
+    const response = await importUrl(
+      { url: "https://files.example/archive.bin" },
+      async () => new Response(new Uint8Array(size), {
+        headers: { "content-type": "application/octet-stream" },
+      }),
+    );
+    expect(response.status).toBe(201);
+    const created = await body(response);
+    expect(created.data.size_bytes).toBe(size);
+    const downloaded = await dispatch(`${origin}/api/files/${created.data.id}`);
+    expect(Number(downloaded.headers.get("content-length"))).toBe(size);
+    expect((await downloaded.arrayBuffer()).byteLength).toBe(size);
+  });
+
+  it("rejects unsafe, unavailable, HTML, empty, and oversized URL sources", async () => {
+    const unusedFetcher = vi.fn<RemoteFetcher>();
+    for (const value of [
+      {},
+      { url: "not a URL" },
+      { url: "file:///etc/passwd" },
+      { url: "http://127.0.0.1/private" },
+      { url: "https://user:secret@example.com/file" },
+    ]) {
+      const response = await importUrl(value, unusedFetcher);
+      expect(response.status).toBe(400);
+    }
+    expect(unusedFetcher).not.toHaveBeenCalled();
+
+    const missing = await importUrl(
+      { url: "https://files.example/missing" },
+      async () => new Response("missing", { status: 404, headers: { "content-type": "text/plain" } }),
+    );
+    expect(missing.status).toBe(400);
+    expect(await body(missing)).toEqual({ error: "Could not download file from URL" });
+
+    const html = await importUrl(
+      { url: "https://www.youtube.com/watch?v=example" },
+      async () => new Response("<!doctype html><title>video</title>", {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
+    expect(html.status).toBe(415);
+    expect(await body(html)).toEqual({ error: "URL points to a web page, not a file" });
+
+    const empty = await importUrl(
+      { url: "https://files.example/no-content" },
+      async () => new Response(null, { status: 204 }),
+    );
+    expect(empty.status).toBe(400);
+    expect(await body(empty)).toEqual({ error: "URL did not return file data" });
+
+    const oversized = await importUrl(
+      { url: "https://files.example/huge.bin" },
+      async () => new Response("", {
+        headers: {
+          "content-length": "1000000001",
+          "content-type": "application/octet-stream",
+        },
+      }),
+    );
+    expect(oversized.status).toBe(413);
+    expect(await body(oversized)).toEqual({ error: "File exceeds the 1,000,000,000 byte limit" });
   });
 
   it("creates and aborts multipart uploads", async () => {

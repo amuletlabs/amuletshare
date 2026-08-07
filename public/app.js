@@ -11,6 +11,9 @@ const uploadCount = document.querySelector("#upload-count");
 const uploadAllButton = document.querySelector("#upload-all");
 const batchStatus = document.querySelector("#batch-status");
 const uploadsSection = document.querySelector("#uploads");
+const urlForm = document.querySelector("#url-form");
+const urlInput = document.querySelector("#source-url");
+const urlStatus = document.querySelector("#url-status");
 
 const queue = new Map();
 let batchBusy = false;
@@ -38,6 +41,16 @@ function formatBytes(bytes) {
 
 function displayExpiry(value) {
   return value ? new Date(value).toLocaleString() : "Never";
+}
+
+function itemName(item) {
+  return item.kind === "url" ? item.url : item.file.name;
+}
+
+function itemMetadata(item) {
+  return item.kind === "url"
+    ? "Remote file · size and type checked during upload"
+    : `${formatBytes(item.file.size)} · ${item.file.type || "application/octet-stream"}`;
 }
 
 async function responseJson(response) {
@@ -71,10 +84,10 @@ function renderItem(item) {
   summary.className = "file-summary";
   const name = document.createElement("strong");
   name.className = "file-name";
-  name.textContent = item.file.name;
+  name.textContent = itemName(item);
   const metadata = document.createElement("span");
   metadata.className = "file-meta";
-  metadata.textContent = `${formatBytes(item.file.size)} · ${item.file.type || "application/octet-stream"}`;
+  metadata.textContent = itemMetadata(item);
   summary.append(name, metadata);
 
   const actions = document.createElement("div");
@@ -95,7 +108,7 @@ function renderItem(item) {
   remove.className = item.state === "complete" ? "dismiss-file" : "remove-file";
   remove.textContent = "×";
   remove.disabled = item.state === "uploading" || batchBusy;
-  remove.setAttribute("aria-label", `${item.state === "complete" ? "Dismiss" : "Remove"} ${item.file.name}`);
+  remove.setAttribute("aria-label", `${item.state === "complete" ? "Dismiss" : "Remove"} ${itemName(item)}`);
   remove.addEventListener("click", () => {
     queue.delete(item.id);
     renderQueue();
@@ -114,7 +127,7 @@ function renderItem(item) {
     if (item.state === "uploading") {
       const meter = document.createElement("progress");
       meter.max = 100;
-      meter.setAttribute("aria-label", `Upload progress for ${item.file.name}`);
+      meter.setAttribute("aria-label", `Upload progress for ${itemName(item)}`);
       if (Number.isFinite(item.progress)) meter.value = item.progress;
       detail.append(meter);
     }
@@ -162,6 +175,7 @@ function addFiles(files) {
     const id = newQueueId();
     queue.set(id, {
       id,
+      kind: "file",
       file,
       state: invalid ? "invalid" : "queued",
       message: invalid ? "Files cannot exceed 1,000,000,000 bytes." : "",
@@ -175,10 +189,48 @@ function addFiles(files) {
   renderQueue();
 }
 
+function addUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    urlStatus.classList.add("error");
+    urlStatus.textContent = "Enter a valid URL.";
+    return;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    urlStatus.classList.add("error");
+    urlStatus.textContent = "Use an HTTP or HTTPS URL.";
+    return;
+  }
+  const id = newQueueId();
+  queue.set(id, {
+    id,
+    kind: "url",
+    url: url.toString(),
+    state: "queued",
+    message: "",
+    progress: null,
+    data: null,
+  });
+  urlInput.value = "";
+  urlStatus.classList.remove("error");
+  urlStatus.textContent = "1 URL added.";
+  renderQueue();
+}
+
 async function directUpload(item) {
   const form = new FormData();
   form.append("file", item.file);
   return responseJson(await fetch("/api/files", { method: "POST", body: form }));
+}
+
+async function urlUpload(item) {
+  return responseJson(await fetch("/api/files", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: item.url }),
+  }));
 }
 
 async function uploadPartWithRetry(item, url, body, partNumber, partCount) {
@@ -254,13 +306,15 @@ async function multipartUpload(item) {
 async function uploadOne(item) {
   if (item.state === "uploading" || item.state === "complete" || item.state === "invalid") return false;
   item.state = "uploading";
-  item.message = "Uploading…";
+  item.message = item.kind === "url" ? "Cloning remote file…" : "Uploading…";
   item.progress = null;
   renderQueue();
   try {
-    const data = item.file.size < DIRECT_UPLOAD_LIMIT
-      ? await directUpload(item)
-      : await multipartUpload(item);
+    const data = item.kind === "url"
+      ? await urlUpload(item)
+      : item.file.size < DIRECT_UPLOAD_LIMIT
+        ? await directUpload(item)
+        : await multipartUpload(item);
     item.state = "complete";
     item.message = "Upload complete.";
     item.progress = 100;
@@ -331,6 +385,11 @@ dropZone.addEventListener("drop", (event) => {
 fileInput.addEventListener("change", () => {
   if (fileInput.files?.length) addFiles(fileInput.files);
   fileInput.value = "";
+});
+
+urlForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  addUrl(urlInput.value.trim());
 });
 
 uploadAllButton.addEventListener("click", () => { void uploadAll(); });

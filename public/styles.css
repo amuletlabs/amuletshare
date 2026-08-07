@@ -80,6 +80,73 @@ button:focus-visible,
 
 .file-picker > h2 { margin-bottom: 7px; }
 
+.url-picker { margin-top: 22px; }
+
+.section-heading {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+.help-popover { position: static; }
+
+.help-popover summary {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  list-style: none;
+  cursor: pointer;
+}
+
+.help-popover summary::-webkit-details-marker { display: none; }
+
+.help-popover summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.help-popover p {
+  position: absolute;
+  z-index: 2;
+  top: 24px;
+  left: 0;
+  width: 280px;
+  margin: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 9px 11px;
+  font-size: 14px;
+  font-weight: 400;
+  box-shadow: 3px 3px 0 #dddddd;
+}
+
+.url-box {
+  border: 1px dashed #888888;
+  padding: 20px;
+}
+
+.url-row {
+  display: flex;
+  gap: 7px;
+}
+
+.url-row input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 5px 7px;
+}
+
 .drop-zone {
   min-height: 120px;
   border: 1px dashed #888888;
@@ -120,13 +187,13 @@ button:disabled {
   cursor: default;
 }
 
-#choose-files {
+.picker-button {
   min-height: 30px;
   background: var(--paper);
   color: var(--ink);
 }
 
-#choose-files:hover { background: var(--ink); color: var(--paper); }
+.picker-button:hover { background: var(--ink); color: var(--paper); }
 
 .status {
   min-height: 1.4em;
@@ -227,7 +294,7 @@ footer {
 }
 
 footer::before { content: ""; display: block; height: 7px; }
-footer a { margin-left: 10px; }
+footer a + a { margin-left: 10px; }
 
 .doc-nav {
   display: flex;
@@ -311,6 +378,9 @@ footer a { margin-left: 10px; }
   .doc-page { padding: 36px 20px 22px; }
   .definition { grid-template-columns: 1fr; gap: 4px; }
   .drop-zone { min-height: 110px; padding: 17px 12px; }
+  .url-box { padding: 12px; }
+  .url-row { align-items: stretch; flex-direction: column; }
+  .help-popover p { width: min(280px, calc(100vw - 50px)); }
   .upload-item { grid-template-columns: 1fr; }
   .item-actions { justify-content: flex-start; }
   .item-result dl { grid-template-columns: 1fr; gap: 0; }

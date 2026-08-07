@@ -22,11 +22,21 @@ import {
   validatePassword,
   verifyPassword,
 } from "../services/passwords";
+import { fetchRemoteFile, type RemoteFetcher, type RemoteFile } from "../services/url-imports";
+
+const REMOTE_PART_SIZE = 8 * 1024 * 1024;
 
 function optionalFormString(form: FormData, name: string): string | undefined {
   const value = form.get(name);
   if (value === null || value === "") return undefined;
   if (typeof value !== "string") throw new AppError(400, `${name} must be text`);
+  return value;
+}
+
+function optionalJsonString(body: Record<string, unknown>, name: string): string | undefined {
+  const value = body[name];
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") throw new AppError(400, `${name} must be a string`);
   return value;
 }
 
@@ -98,10 +108,116 @@ async function uploadDirect(request: Request, env: Env): Promise<Response> {
   return json({ data: publicFile(record), edit_password: editPassword, url: fileUrl(request, env, id, fileName) }, 201);
 }
 
-export async function createFile(request: Request, env: Env): Promise<Response> {
+async function uploadFromUrl(
+  request: Request,
+  env: Env,
+  fetcher: RemoteFetcher,
+): Promise<Response> {
+  const body = await readJsonObject(request);
+  if (typeof body.url !== "string" || body.url.trim().length === 0) {
+    throw new AppError(400, "url is required");
+  }
+  const requestedName = optionalJsonString(body, "filename");
+  const requestedType = optionalJsonString(body, "mime_type");
+  const password = optionalPassword(body.password, "password");
+  const suppliedEditPassword = optionalJsonString(body, "edit_password");
+  const editPassword = suppliedEditPassword
+    ? validatePassword(suppliedEditPassword, "edit_password")
+    : generateEditPassword();
+  const remote = await fetchRemoteFile(body.url.trim(), fetcher, {
+    filename: requestedName,
+    mimeType: requestedType,
+  });
+  const id = await createAvailableFileId(env);
+  const objectKey = `files/${id}`;
+  let object: R2Object;
+  try {
+    object = await storeRemoteFile(env, objectKey, id, remote);
+  } catch (error) {
+    await env.FILES.delete(objectKey).catch(() => undefined);
+    if (remote.limitExceeded()) throw new AppError(413, "File exceeds the 1,000,000,000 byte limit");
+    if (remote.readFailed()) throw new AppError(400, "Could not download file from URL");
+    throw error;
+  }
+
+  let record: FileRecord;
+  try {
+    record = await createRecord(
+      env,
+      id,
+      objectKey,
+      remote.fileName,
+      remote.mimeType,
+      object.size,
+      password,
+      editPassword,
+    );
+    await insertFile(env, record);
+  } catch (error) {
+    await env.FILES.delete(objectKey).catch(() => undefined);
+    throw error;
+  }
+
+  return json({ data: publicFile(record), edit_password: editPassword, url: fileUrl(request, env, id, remote.fileName) }, 201);
+}
+
+async function storeRemoteFile(env: Env, objectKey: string, fileId: string, remote: RemoteFile): Promise<R2Object> {
+  const reader = remote.body.getReader();
+  const buffer = new Uint8Array(REMOTE_PART_SIZE);
+  let buffered = 0;
+  let upload: R2MultipartUpload | undefined;
+  const parts: R2UploadedPart[] = [];
+  const createUpload = async (): Promise<R2MultipartUpload> => {
+    upload ||= await env.FILES.createMultipartUpload(objectKey, {
+      httpMetadata: { contentType: remote.mimeType },
+      customMetadata: { fileId },
+    });
+    return upload;
+  };
+
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      let offset = 0;
+      while (offset < chunk.value.byteLength) {
+        const copied = Math.min(REMOTE_PART_SIZE - buffered, chunk.value.byteLength - offset);
+        buffer.set(chunk.value.subarray(offset, offset + copied), buffered);
+        buffered += copied;
+        offset += copied;
+        if (buffered === REMOTE_PART_SIZE) {
+          const activeUpload = await createUpload();
+          parts.push(await activeUpload.uploadPart(parts.length + 1, buffer.slice()));
+          buffered = 0;
+        }
+      }
+    }
+
+    if (parts.length === 0 && buffered === 0) {
+      return await env.FILES.put(objectKey, new Uint8Array(), {
+        httpMetadata: { contentType: remote.mimeType },
+        customMetadata: { fileId },
+      });
+    }
+    const activeUpload = await createUpload();
+    if (buffered > 0) parts.push(await activeUpload.uploadPart(parts.length + 1, buffer.slice(0, buffered)));
+    return await activeUpload.complete(parts);
+  } catch (error) {
+    await reader.cancel(error).catch(() => undefined);
+    await upload?.abort().catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function createFile(
+  request: Request,
+  env: Env,
+  fetcher: RemoteFetcher = (url, init) => fetch(url, init),
+): Promise<Response> {
   const contentType = request.headers.get("content-type") || "";
   if (contentType.toLowerCase().startsWith("multipart/form-data")) return uploadDirect(request, env);
-  throw new AppError(415, "Use multipart/form-data");
+  if (contentType.toLowerCase().startsWith("application/json")) return uploadFromUrl(request, env, fetcher);
+  throw new AppError(415, "Use multipart/form-data or application/json");
 }
 
 async function authorizeView(record: FileRecord, request: Request): Promise<void> {

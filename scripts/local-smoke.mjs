@@ -115,13 +115,30 @@ async function run() {
   assert.equal((await fetch(`${baseUrl}/api/files/${protectedId}?password=view-one`)).status, 403);
   assert.equal((await fetch(`${baseUrl}/api/files/${protectedId}?password=view-two`)).status, 200);
 
-  const disabledUrlImport = await fetch(`${baseUrl}/api/files`, {
+  const rejectedPageImport = await fetch(`${baseUrl}/api/files`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: "https://example.com/file.txt" }),
+    body: JSON.stringify({ url: "https://example.com/" }),
   });
-  assert.equal(disabledUrlImport.status, 415);
-  assert.deepEqual(await disabledUrlImport.json(), { error: "Use multipart/form-data" });
+  assert.equal(rejectedPageImport.status, 415);
+  assert.deepEqual(await rejectedPageImport.json(), { error: "URL points to a web page, not a file" });
+
+  const cloneSource = startLocalWorker
+    ? "https://httpbin.org/robots.txt"
+    : `${baseUrl}/f/${protectedId}.txt?password=view-two`;
+  const clonedResponse = await fetch(`${baseUrl}/api/files`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: cloneSource, filename: "cloned-source.txt" }),
+  });
+  const cloned = await json(clonedResponse);
+  cleanupRequests.push({ id: cloned.data.id, editPassword: cloned.edit_password });
+  assert.equal(clonedResponse.status, 201);
+  assert.equal(cloned.data.file_name, "cloned-source.txt");
+  assert.ok(cloned.data.size_bytes > 0);
+  const clonedDownload = await fetch(`${baseUrl}/api/files/${cloned.data.id}`);
+  assert.equal(clonedDownload.status, 200);
+  assert.ok((await clonedDownload.arrayBuffer()).byteLength > 0);
 
   const boundaryPath = path.join(temporaryDirectory, "retained-seven-days.bin");
   const boundaryFile = await open(boundaryPath, "w");
@@ -206,7 +223,7 @@ async function run() {
     assert.equal(response.status, 200, `cleanup delete failed for ${entry.id}`);
   }
   assert.equal((await fetch(`${baseUrl}/api/files/${protectedId}`)).status, 404);
-  console.log("Smoke test passed: UI, direct upload, disabled URL import, passwords, retention, multipart, abort, download, and deletion.");
+  console.log("Smoke test passed: UI, direct upload, URL cloning, page rejection, passwords, retention, multipart, abort, download, and deletion.");
 }
 
 try {

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/amuletlabs/amuletshare/actions/workflows/ci.yml/badge.svg)](https://github.com/amuletlabs/amuletshare/actions/workflows/ci.yml)
 
-A small file-sharing API for agents. It runs as one Cloudflare Worker with a private R2 bucket, D1 metadata, static assets, and scheduled expiration cleanup.
+A small file-sharing API for agents. Upload local files or clone direct public file URLs, then share the stored bytes through a short link. It runs as one Cloudflare Worker with a private R2 bucket, D1 metadata, static assets, and scheduled expiration cleanup.
 
 Licensed under [Apache-2.0](./LICENSE).
 

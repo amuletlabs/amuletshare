@@ -66,6 +66,7 @@ test("queues, individually uploads, and batch uploads through the landing page",
   await expect(page.getByText("Agent?", { exact: false })).toContainText("upload via API");
   await expect(page.getByRole("link", { name: "YC" })).toHaveAttribute("href", "https://www.ycombinator.com/companies/amulet");
   await expect(page.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+  await expect.poll(() => page.getByRole("link", { name: "YC" }).evaluate((link) => getComputedStyle(link).marginLeft)).toBe("0px");
   const llms = await request.get("/llms.txt");
   expect(llms.status()).toBe(200);
   expect(llms.headers()["content-type"]).toContain("text/plain");
@@ -80,13 +81,15 @@ test("queues, individually uploads, and batch uploads through the landing page",
   await expect(docsPage.getByRole("heading", { name: "Terms of Service" })).toBeVisible();
   await docsPage.close();
   await expect(page.getByLabel("Enable password")).toHaveCount(0);
-  await expect(page.locator("#source-url")).toHaveCount(0);
-  const disabledUrlImport = await request.post("/api/files", {
-    headers: { "content-type": "application/json" },
-    data: { url: "https://example.com/file.txt" },
-  });
-  expect(disabledUrlImport.status()).toBe(415);
-  expect(await disabledUrlImport.json()).toEqual({ error: "Use multipart/form-data" });
+  await expect(page.locator("#source-url")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add URL" })).toBeVisible();
+  await expect(page.locator(".url-help")).toHaveCount(0);
+  await expect(page.locator(".url-box")).toHaveCSS("border-top-style", "dashed");
+  const fileUrlHelp = page.locator(".help-popover");
+  await expect(fileUrlHelp.locator("p")).toBeHidden();
+  await fileUrlHelp.locator("summary").click();
+  await expect(fileUrlHelp.locator("p")).toContainText("Web pages are rejected");
+  await fileUrlHelp.locator("summary").click();
   await expect(page.locator("#uploads")).toBeHidden();
 
   const fileInput = page.locator("#file");
@@ -139,4 +142,56 @@ test("queues, individually uploads, and batch uploads through the landing page",
     const deleted = await request.delete(`/api/files/${id}`, { data: { edit_password: uploaded.editPassword } });
     expect(deleted.status()).toBe(200);
   }
+});
+
+test("queues direct URLs and renders clone success and rejection", async ({ page }) => {
+  await page.route("**/api/files", async (route) => {
+    const request = route.request();
+    const value = request.postDataJSON() as { url: string };
+    if (value.url.includes("web-page")) {
+      await route.fulfill({
+        status: 415,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "URL points to a web page, not a file" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          id: "0123456789abcdef",
+          file_name: "pixel.png",
+          mime_type: "image/png",
+          size_bytes: 68,
+          expires_at: null,
+          created_at: "2026-08-07T00:00:00.000Z",
+          downloads: 0,
+        },
+        edit_password: "mock-edit-password",
+        url: "http://127.0.0.1:8787/f/0123456789abcdef.png",
+      }),
+    });
+  });
+
+  await page.goto("/");
+  const sourceUrl = page.locator("#source-url");
+  await sourceUrl.fill("https://cdn.example.com/pixel.png");
+  await page.getByRole("button", { name: "Add URL" }).click();
+  await sourceUrl.fill("https://example.com/web-page");
+  await page.getByRole("button", { name: "Add URL" }).click();
+
+  const rows = page.locator("#upload-list .upload-item");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("https://cdn.example.com/pixel.png");
+  await expect(rows.first()).toContainText("size and type checked during upload");
+
+  await rows.first().getByRole("button", { name: "Upload", exact: true }).click();
+  await expect(rows.first().locator(".item-result")).toContainText("0123456789abcdef.png");
+  await expect(rows.first().locator(".item-result")).toContainText("mock-edit-password");
+
+  await rows.nth(1).getByRole("button", { name: "Upload", exact: true }).click();
+  await expect(rows.nth(1)).toContainText("URL points to a web page, not a file");
+  await expect(rows.nth(1)).toHaveClass(/is-error/u);
 });
