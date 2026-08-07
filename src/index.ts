@@ -105,7 +105,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   match = pathname.match(/^\/f\/([^/.]+)(?:\.[^/]*)?$/u);
   if (match) {
     if (request.method !== "GET") throw new AppError(405, "GET required for file downloads");
-    return downloadFile(request, env, decodeId(match[1]));
+    return downloadFile(request, env, decodeId(match[1]), true);
   }
   if (pathname === "/__local" || pathname === "/__local/data") return localInspector(request, env);
 

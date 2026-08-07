@@ -171,9 +171,11 @@ GET /api/files/:id
 GET /f/:id.ext
 ```
 
-Required input: file ID. `password` is required as a query parameter only when the file is protected. `download=1` is optional and forces an attachment response.
+Required input: file ID. `password` is required as a query parameter only when the file is protected.
 
-Returns the original file bytes with its stored MIME type and filename. JPEG, PNG, GIF, WebP, and AVIF files open inline by default. HTML, SVG, and every other type remain download-only. All file responses include `X-Content-Type-Options: nosniff`. A successful response increments `downloads`.
+`GET /api/files/:id` always returns the original file bytes. `GET /f/:id.ext` also returns the original bytes to API clients and agents, but a browser document navigation (an `Accept: text/html` request) returns a file-view page instead. The page renders Markdown, text, PDFs, images, audio, video, HTML, and SVG in the browser. Active HTML/SVG and rendered Markdown are sandboxed. Other file types get a browser page with explicit Raw and Download actions rather than causing an automatic download.
+
+Use `raw=1` to explicitly request the original bytes with inline browser disposition, independent of content negotiation. Use `download=1` to force an attachment response. Byte responses retain the stored MIME type, except the internal browser preview may infer a display MIME type from a recognized extension when the stored type is `application/octet-stream`. All byte responses include `X-Content-Type-Options: nosniff`. Fetching the original bytes or a rendered preview increments `downloads`; loading only the outer file-view page does not.
 
 ## Retrieve metadata
 

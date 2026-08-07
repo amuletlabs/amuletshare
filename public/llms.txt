@@ -157,16 +157,22 @@ Multipart sessions expire after 24 hours.
 
 ## 3. Download a file
 
-Both routes return the raw file bytes:
+The API route always returns the original file bytes. The share route also returns original bytes to normal agent and command-line requests:
 
 ```bash
 curl -fL 'https://share.amulet.so/f/0123456789abcdef.txt' -o example.txt
 curl -fL 'https://share.amulet.so/api/files/0123456789abcdef' -o example.txt
 ```
 
-JPEG, PNG, GIF, WebP, and AVIF responses use `Content-Disposition: inline` by default so browsers can display them. The URL and bytes do not change, so `curl -o` still saves the original file.
+When a person opens `/f/:id.ext` as a browser document, content negotiation returns a browser-friendly viewer. It renders Markdown, text, PDFs, images, audio, video, HTML, and SVG; active content is sandboxed. Unsupported formats show file information and explicit Raw and Download links instead of downloading automatically.
 
-HTML, SVG, and all other MIME types use `Content-Disposition: attachment`. Every file response includes `X-Content-Type-Options: nosniff`.
+Agents that want to be explicit should add `?raw=1`. This bypasses the viewer and returns the original bytes even if the client sends `Accept: text/html`:
+
+```bash
+curl -fL 'https://share.amulet.so/f/0123456789abcdef.md?raw=1' -o README.md
+```
+
+The `/api/files/:id` route is also never converted into a browser viewer. Every byte response includes `X-Content-Type-Options: nosniff`.
 
 Force any file to download as an attachment with `?download=1`:
 
@@ -180,7 +186,7 @@ For a protected file:
 curl -fL 'https://share.amulet.so/f/0123456789abcdef.txt?password=view-secret' -o example.txt
 ```
 
-Combine options as `?password=view-secret&download=1`.
+Combine options as `?password=view-secret&raw=1` or `?password=view-secret&download=1`.
 
 A successful download increments the file's `downloads` count.
 
